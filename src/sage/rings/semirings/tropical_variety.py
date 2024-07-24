@@ -401,6 +401,44 @@ class TropicalVariety(SageObject):
         """
         return self._hypersurface
 
+    def dual_subdivision(self):
+        """
+        EXAMPLES::
+
+            sage: T = TropicalSemiring(QQ, use_min=False)
+            sage: R.<x,y> = PolynomialRing(T)
+            sage: p1 = R(3) + R(2)*x+R(2)*y + R(3)*x*y+x^2+y^2
+            sage: tv = p1.tropical_variety(); tv
+            Tropical curve of 0*x^2 + 3*x*y + 0*y^2 + 2*x + 2*y + 3
+            sage: G = tv.dual_subdivision()
+            sage: G.plot()
+        
+        ::
+
+            sage: T = TropicalSemiring(QQ)
+            sage: R.<x,y,z> = PolynomialRing(T)
+            sage: p1 = x + y + z + x^2 + R(1)
+            sage: tv = p1.tropical_variety()
+            sage: G = tv.dual_subdivision()
+        """
+        from sage.graphs.graph import Graph
+
+        G = Graph()
+        edges = []
+        for edge in self._keys:
+            edges.append(edge)
+        G.add_edges(edges)
+        pos = {}
+        for vertex in G.vertices():
+            pos[vertex] = list(vertex)
+
+        if self._poly.parent().ngens() == 2:
+            G.layout(pos=pos, save_pos=True)
+        elif self._poly.parent().ngens() == 3:
+            G.layout(dim=3, save_pos=True)
+            G._pos3d = pos
+        return G
+
 class TropicalSurface(TropicalVariety):
     r"""
     A tropical surface in `\RR^3`.

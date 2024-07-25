@@ -648,16 +648,16 @@ class TropicalCurve(TropicalVariety):
         """
         Set the default axes for ``self``.
         
-        This default axes is used for plot of tropical curve and also the
-        3d plot of tropical polynomial function. The axes is chosen by first
-        find all vertices of this tropical curve. Then we choose the minimum
-        and maximum of all x-component in this vertices to be the x-axis.
-        The same apply to the y-axis.
+        This default axes is used for plot of tropical curve and also
+        the 3d plot of tropical polynomial function. The axes is chosen
+        by first find all vertices of this tropical curve. Then we choose
+        the minimum and maximum of all x-component in this vertices to
+        be the x-axis. The same apply to the y-axis.
 
-        OUTPUT: 
+        OUTPUT:
         
-        A list of two lists, where the first inner list represent value of
-        x-axis and the second inner list represent value of y-axis.
+        A list of two lists, where the first inner list represent value
+        of x-axis and the second inner list represent value of y-axis.
 
         EXAMPLES::
 
@@ -700,8 +700,8 @@ class TropicalCurve(TropicalVariety):
     
     def vertices(self):
         r"""
-        Return all vertices of ``self``, which is the point where three or
-        more edges intersect.
+        Return all vertices of ``self``, which is the point where three
+        or more edges intersect.
 
         OUTPUT: A set of `(x,y)` points
 
@@ -716,26 +716,86 @@ class TropicalCurve(TropicalVariety):
             sage: p2.tropical_variety().vertices()
             {(1, -1/2), (7/6, -1/3)}
         """
-        if len(self._hypersurface) < 3:
-            return {}
+        from sage.sets.set import Set
+        return Set(self.vectors_of_vertices().keys())
 
-        vertices = set()
-        for i, component in enumerate(self._hypersurface):
-            parametric_function = component[0]
-            var = component[1][0].variables()[0]
-            interval = self._parameter_intervals()[i]
-            lower = interval[0].lower()
-            upper = interval[0].upper()
-            if lower != -infinity:
-                x = parametric_function[0].subs(var==lower)
-                y = parametric_function[1].subs(var==lower)
-                vertices.add((x,y))
-            if upper != infinity:
-                x = parametric_function[0].subs(var==upper)
-                y = parametric_function[1].subs(var==upper)
-                vertices.add((x,y))
-        return vertices
+    def vectors_of_vertices(self):
+        r"""
+        EXAMPLES::
+
+            sage: T = TropicalSemiring(QQ)
+            sage: R.<x,y> = PolynomialRing(T)
+            sage: p1 = R(-2)*x^2 + R(-1)*x + R(1/2)*y + R(1/6)
+            sage: p1.tropical_variety().vectors_of_vertices()
+            {(1, -1/2): [(0, 1), (-1, -2), (1, 1)],
+             (7/6, -1/3): [(-1, -1), (0, 1), (1, 0)]}
+        """
+        from sage.calculus.functional import diff
+        from sage.arith.misc import gcd
+        from sage.rings.rational_field import QQ
+        from sage.modules.free_module_element import vector
+        
+        # finding the vertices and edges that are adjacent to it
+        vert_comp = {}
+        if len(self._hypersurface) >= 3:
+            for i, component in enumerate(self._hypersurface):
+                parametric_function = component[0]
+                var = component[1][0].variables()[0]
+                interval = self._parameter_intervals()[i]
+                lower = interval[0].lower()
+                upper = interval[0].upper()
+                if lower != -infinity:
+                    x = parametric_function[0].subs(var==lower)
+                    y = parametric_function[1].subs(var==lower)
+                    if (x,y) not in vert_comp:
+                        vert_comp[(x,y)] = [(i,'pos')]
+                    else:
+                        vert_comp[(x,y)].append((i,'pos'))
+                if upper != infinity:
+                    x = parametric_function[0].subs(var==upper)
+                    y = parametric_function[1].subs(var==upper)
+                    if (x,y) not in vert_comp:
+                        vert_comp[(x,y)] = [(i,'neg')]
+                    else:
+                        vert_comp[(x,y)].append((i,'neg'))
+        
+        # finding the vector in the direction of each edges
+        temp_vectors = []
+        par = self._hypersurface[0][1][0].variables()[0]
+        for vertex in self._hypersurface:
+            dx = diff(vertex[0][0], par)
+            dy = diff(vertex[0][1], par)
+            multiplier = gcd(QQ(dx), QQ(dy))
+            temp_vectors.append(vector([dx/multiplier, dy/multiplier]))
+
+        result = {}
+        for vertex in vert_comp:
+            vectors = []
+            for comp in vert_comp[vertex]:
+                weight = self._hypersurface[comp[0]][2]
+                if comp[1] == 'pos':
+                    vectors.append(weight*temp_vectors[comp[0]])
+                else:
+                    vectors.append(weight*(-temp_vectors[comp[0]]))
+            result[vertex] = vectors
+        return result
+
+    def is_smooth(self):
+        if len(self.vertices()) == self._poly.degree()**2:
+            return True
+        return False
     
+    def is_simple(self):
+        vov = self.vectors_of_vertices()
+        for vertex in self.vertices():
+            if len(vov[vertex]) > 4:
+                return False
+            elif len(vov[vertex]) == 4:
+                for v in vov[vertex]:
+                    if -v not in vov[vertex]:
+                        return False
+        return True 
+
     def _parameter_intervals(self):
         r"""
         Return the intervals of each component's parameter of ``self``.

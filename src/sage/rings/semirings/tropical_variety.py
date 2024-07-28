@@ -794,7 +794,26 @@ class TropicalCurve(TropicalVariety):
                 for v in vov[vertex]:
                     if -v not in vov[vertex]:
                         return False
-        return True 
+        return True
+    
+    def genus(self):
+        if not self.is_simple():
+            raise ValueError
+        # number of trivalent vertices
+        trivalent = 0
+        for vectors in self.vectors_of_vertices().values():
+            if len(vectors) == 3:
+                trivalent += 1
+        # number of unbounded edges
+        unbounded = 0
+        for component in self._hypersurface:
+            if len(component[1]) == 1:
+                unbounded += 1
+        print(f"unbound = {unbounded}")
+        return trivalent//2 - unbounded//2 + 1
+    
+    def contribution(self):
+        pass
 
     def _parameter_intervals(self):
         r"""

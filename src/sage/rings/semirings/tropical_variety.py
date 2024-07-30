@@ -160,6 +160,22 @@ class TropicalVariety(SageObject):
         [(t1 - 1/2, t2, t3, t1), [t2 - 9/2 <= t1, t1 <= t3 + 1/2, t2 - 5 <= t3], 1],
         [(2*t1 - t2 + 4, t2, t3, t1), [t1 <= min(1/2*t2 + 1/2*t3 - 2, t2 - 9/2)], 1]] 
     """
+
+    @staticmethod
+    def __classcall_private__(cls, poly):
+        """
+        
+
+        EXAMPLES::
+
+            sage: from sage.rings.semirings.tropical_variety import TropicalVariety
+            sage: T = TropicalSemiring(QQ)       
+            sage: R.<x,y> = PolynomialRing(T)    
+            sage:
+            True
+        """
+        return super().__classcall__(cls, poly)
+    
     def __init__(self, poly):
         r"""
         Initialize ``self``.
@@ -669,6 +685,9 @@ class TropicalCurve(TropicalVariety):
             sage: p2 = R(12)*x*y + R(-2)*y^2 + R(16)*y + R(25)
             sage: p2.tropical_variety()._axes()
             [[-3/2, 1/2], [25/2, 29/2]]
+            sage: p3 = R(2)*x^2 + x*y + R(2)*y^2 + x + R(-1)*y + R(3)
+            sage: p3.tropical_variety()._axes()
+            [[-3, 4], [-4, 5]]
         """
         if self.number_of_components() == 0: # constant or monomial
             return [[-1,1], [-1,1]]
@@ -715,28 +734,39 @@ class TropicalCurve(TropicalVariety):
             sage: p2 = R(-2)*x^2 + R(-1)*x + R(1/2)*y + R(1/6)
             sage: p2.tropical_variety().vertices()
             {(1, -1/2), (7/6, -1/3)}
+            sage: p3 = R(2)*x^2 + x*y + R(2)*y^2 + x + R(-1)*y + R(3)
+            sage: p3.tropical_variety().vertices()
+            {(-2, 0), (-1, 0), (-1, -3), (3, 4)}
         """
         from sage.sets.set import Set
-        return Set(self.vectors_of_vertices().keys())
+        return Set(self.weight_vectors().keys())
 
-    def vectors_of_vertices(self):
-        r"""
+    def _components_of_vertices(self):
+        """
+        Return the components adjacent to each vertex of ``self``.
+
+        OUTPUT:
+
+        A dictionary where the keys represent the vertices, and the values
+        are lists of tuples. Each tuple consists of the index of an
+        adjacent edge (component) `e_i` and a string indicating the
+        directionality of `e_i` relative to the vertex. The string is
+        either "pos" or "neg", specifying whether it is positive or
+        negative.
+
         EXAMPLES::
 
             sage: T = TropicalSemiring(QQ)
             sage: R.<x,y> = PolynomialRing(T)
-            sage: p1 = R(-2)*x^2 + R(-1)*x + R(1/2)*y + R(1/6)
-            sage: p1.tropical_variety().vectors_of_vertices()
-            {(1, -1/2): [(0, 1), (-1, -2), (1, 1)],
-             (7/6, -1/3): [(-1, -1), (0, 1), (1, 0)]}
+            sage: p3 = R(2)*x^2 + x*y + R(2)*y^2 + x + R(-1)*y + R(3)
+            sage: p3.tropical_variety()._components_of_vertices()
+            {(-2, 0): [(0, 'neg'), (1, 'pos'), (3, 'pos')],
+            (-1, -3): [(2, 'neg'), (4, 'pos'), (5, 'pos')],
+            (-1, 0): [(3, 'neg'), (4, 'neg'), (6, 'pos')],
+            (3, 4): [(6, 'neg'), (7, 'pos'), (8, 'pos')]}
         """
-        from sage.calculus.functional import diff
-        from sage.arith.misc import gcd
-        from sage.rings.rational_field import QQ
-        from sage.modules.free_module_element import vector
-        
-        # finding the vertices and edges that are adjacent to it
-        vert_comp = {}
+        # finding edges that are adjacent to each vertex
+        comp_vert = {}
         if len(self._hypersurface) >= 3:
             for i, component in enumerate(self._hypersurface):
                 parametric_function = component[0]
@@ -747,31 +777,73 @@ class TropicalCurve(TropicalVariety):
                 if lower != -infinity:
                     x = parametric_function[0].subs(var==lower)
                     y = parametric_function[1].subs(var==lower)
-                    if (x,y) not in vert_comp:
-                        vert_comp[(x,y)] = [(i,'pos')]
+                    if (x,y) not in comp_vert:
+                        comp_vert[(x,y)] = [(i,'pos')]
                     else:
-                        vert_comp[(x,y)].append((i,'pos'))
+                        comp_vert[(x,y)].append((i,'pos'))
                 if upper != infinity:
                     x = parametric_function[0].subs(var==upper)
                     y = parametric_function[1].subs(var==upper)
-                    if (x,y) not in vert_comp:
-                        vert_comp[(x,y)] = [(i,'neg')]
+                    if (x,y) not in comp_vert:
+                        comp_vert[(x,y)] = [(i,'neg')]
                     else:
-                        vert_comp[(x,y)].append((i,'neg'))
-        
-        # finding the vector in the direction of each edges
+                        comp_vert[(x,y)].append((i,'neg'))
+        return comp_vert
+    
+    def weight_vectors(self):
+        r"""
+        Return the weight vectors for all vertices of ``self``.
+
+        Suppose `v` is a vertex adjacent to the edges `e_1, ldots, e_k`
+        with respective weights `w_1, ldots, w_k`. Every edge `e_i` is
+        contained in a line (component) defined by an equation with
+        integer coefficients. Because of this there exists a unique
+        integer vector `v_i=(\alpha, \beta)` in the direction of `e_i`
+        such that `\gcd(\alpha, \beta)=1`. Then each vertex `v` yield
+        the vectors `w_1v_1,ldots,w_kv_k`. These vectors will satisfy
+        the following balancing condition:
+        `\sum_{i=1}^k w_i v_i = 0`.
+
+        OUTPUT:
+
+        A dictionary where the keys represent the vertices, and the values
+        are lists of vectors.
+
+        EXAMPLES::
+
+            sage: T = TropicalSemiring(QQ)
+            sage: R.<x,y> = PolynomialRing(T)
+            sage: p1 = R(-2)*x^2 + R(-1)*x + R(1/2)*y + R(1/6)
+            sage: p1.tropical_variety().weight_vectors()
+            {(1, -1/2): [(0, 1), (-1, -2), (1, 1)],
+             (7/6, -1/3): [(-1, -1), (0, 1), (1, 0)]}
+            sage: p3 = R(2)*x^2 + x*y + R(2)*y^2 + x + R(-1)*y + R(3)
+            sage: p3.tropical_variety().weight_vectors()
+            {(-2, 0): [(-1, -1), (0, 1), (1, 0)],
+            (-1, -3): [(-1, -1), (0, 1), (1, 0)],
+            (-1, 0): [(-1, 0), (0, -1), (1, 1)],
+            (3, 4): [(-1, -1), (0, 1), (1, 0)]}
+        """
+        from sage.calculus.functional import diff
+        from sage.arith.misc import gcd
+        from sage.rings.rational_field import QQ
+        from sage.modules.free_module_element import vector
+
+        # finding the base vector in the direction of each edges
         temp_vectors = []
         par = self._hypersurface[0][1][0].variables()[0]
-        for vertex in self._hypersurface:
-            dx = diff(vertex[0][0], par)
-            dy = diff(vertex[0][1], par)
+        for comp in self._hypersurface:
+            dx = diff(comp[0][0], par)
+            dy = diff(comp[0][1], par)
             multiplier = gcd(QQ(dx), QQ(dy))
             temp_vectors.append(vector([dx/multiplier, dy/multiplier]))
 
+        # calculate the weight vectors of each vertex
+        cov = self._components_of_vertices()
         result = {}
-        for vertex in vert_comp:
+        for vertex in cov:
             vectors = []
-            for comp in vert_comp[vertex]:
+            for comp in cov[vertex]:
                 weight = self._hypersurface[comp[0]][2]
                 if comp[1] == 'pos':
                     vectors.append(weight*temp_vectors[comp[0]])
@@ -781,12 +853,45 @@ class TropicalCurve(TropicalVariety):
         return result
 
     def is_smooth(self):
+        r"""
+        Return ``True`` if ``self`` is smooth and ``False`` otherwise.
+
+        Suppose `C` is a tropical curve of degree `d`. A tropical curve
+        `C` is smooth if the dual subdivision of `C` consists of `d^2`
+        triangles each having unit area `1/2`. This is equivalent with
+        `C` having `d^2` vertices. These vertices are necessarily
+        trivalent (has three adjacent edges).
+
+        EXAMPLES::
+
+            sage: T = TropicalSemiring(QQ)
+            sage: R.<x,y> = PolynomialRing(T)
+            sage: p3 = R(2)*x^2 + x*y + R(2)*y^2 + x + R(-1)*y + R(3)
+            sage: p3.tropical_variety().is_smooth()
+            True
+        """
         if len(self.vertices()) == self._poly.degree()**2:
             return True
         return False
     
     def is_simple(self):
-        vov = self.vectors_of_vertices()
+        r"""
+        Return ``True`` if ``self`` is simple and ``False`` otherwise.
+
+        A tropical curve `C` is called simple if each vertex is either
+        trivalent or is locally the intersection of two line segments.
+        Equivalently, `C` is simple if the corresponding subdivision
+        consists only of triangles and parallelograms.
+
+        EXAMPLES::
+
+            sage: T = TropicalSemiring(QQ)
+            sage: R.<x,y> = PolynomialRing(T)
+            sage: p3 = R(2)*x^2 + x*y + R(2)*y^2 + x + R(-1)*y + R(3)
+            sage: p3.tropical_variety().is_simple()
+            True
+        """
+        vov = self.weight_vectors()
         for vertex in self.vertices():
             if len(vov[vertex]) > 4:
                 return False
@@ -797,23 +902,74 @@ class TropicalCurve(TropicalVariety):
         return True
     
     def genus(self):
+        r"""
+        Return the genus of ``self``.
+
+        Let `t(C)` be the number of trivalent vertices, and let `r(C)` be
+        the number of unbounded edges of `C`. The genus of simple tropical
+        curve `C` is defined by the formula:
+        `g(C) = \frac{1}{2}t(C) - \frac{1}{2}r(C) + 1`.
+
+        EXAMPLES::
+
+            sage: T = TropicalSemiring(QQ)
+            sage: R.<x,y> = PolynomialRing(T)
+            sage: p3 = R(2)*x^2 + x*y + R(2)*y^2 + x + R(-1)*y + R(3)
+            sage: p3.tropical_variety().genus()
+            0
+        """
         if not self.is_simple():
             raise ValueError
-        # number of trivalent vertices
-        trivalent = 0
-        for vectors in self.vectors_of_vertices().values():
+        trivalent = 0  # number of trivalent vertices
+        for vectors in self.weight_vectors().values():
             if len(vectors) == 3:
                 trivalent += 1
-        # number of unbounded edges
-        unbounded = 0
+        unbounded = 0  # number of unbounded edges
         for component in self._hypersurface:
             if len(component[1]) == 1:
                 unbounded += 1
-        print(f"unbound = {unbounded}")
         return trivalent//2 - unbounded//2 + 1
     
     def contribution(self):
-        pass
+        r"""
+        Return the contribution of ``self``.
+
+        The contribution of a simple curve `C` is defined as the product
+        of the normalized areas of all triangles in the corresponding
+        dual subdivision. We just multiply positive integers attached to
+        the trivalent vertices. The contribution of a trivalent vertex
+        equals `w_1w_2|\det(v_1,v_2)|`, are the weights of the adjacent
+        edges and `v_1, v_2, v_3` are their weight vectors. That formula
+        is independent of the choice made because of the balancing
+        condition `w_1v_1+w_2v_2+w_3v_3=0`.
+
+        EXAMPLES::
+
+            sage: T = TropicalSemiring(QQ)
+            sage: R.<x,y> = PolynomialRing(T)
+            sage: p1 = R(-2)*x^2 + R(-1)*x + R(1/2)*y + R(1/6)
+            sage: p1.tropical_variety().contribution()
+            1
+            sage: p3 = R(2)*x^2 + x*y + R(2)*y^2 + x + R(-1)*y + R(3)
+            sage: p3.tropical_variety().contribution()
+            4
+        """
+        result = 1
+        if self.is_simple():
+            voc = self._components_of_vertices()
+            vov = self.weight_vectors()
+            for vertex in vov:
+                if len(vov[vertex]) == 3:
+                    u1 = vov[vertex][0]
+                    u2 = vov[vertex][1]
+                    index1 = voc[vertex][0][0]
+                    index2 = voc[vertex][1][0]
+                    w1 = self._hypersurface[index1][2]
+                    w2 = self._hypersurface[index2][2]
+                    det = u1[0]*u2[1] - u1[1]*u2[0]
+                    print(vertex, w1, w2, u1, u2, det)
+                    result *= w1*w2*abs(det)
+        return result        
 
     def _parameter_intervals(self):
         r"""

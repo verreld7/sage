@@ -716,7 +716,7 @@ class TropicalCurve(TropicalVariety):
                 ymax = vertice[1]
         
         return [[xmin-1, xmax+1], [ymin-1, ymax+1]]
-    
+
     def vertices(self):
         r"""
         Return all vertices of ``self``, which is the point where three
@@ -738,8 +738,7 @@ class TropicalCurve(TropicalVariety):
             sage: p3.tropical_variety().vertices()
             {(-2, 0), (-1, 0), (-1, -3), (3, 4)}
         """
-        from sage.sets.set import Set
-        return Set(self.weight_vectors().keys())
+        return set(self._components_of_vertices().keys())
 
     def _components_of_vertices(self):
         """
@@ -758,12 +757,15 @@ class TropicalCurve(TropicalVariety):
 
             sage: T = TropicalSemiring(QQ)
             sage: R.<x,y> = PolynomialRing(T)
-            sage: p3 = R(2)*x^2 + x*y + R(2)*y^2 + x + R(-1)*y + R(3)
-            sage: p3.tropical_variety()._components_of_vertices()
+            sage: p1 = R(0) + x + y + x*y + x^2*y + x*y^2
+            sage: p1.tropical_variety()._components_of_vertices()
+            {(0, 0): [(0, 'pos'), (1, 'pos'), (2, 'pos'), (3, 'neg'), (4, 'neg')]}
+            sage: p2 = R(2)*x^2 + x*y + R(2)*y^2 + x + R(-1)*y + R(3)
+            sage: p2.tropical_variety()._components_of_vertices()
             {(-2, 0): [(0, 'neg'), (1, 'pos'), (3, 'pos')],
-            (-1, -3): [(2, 'neg'), (4, 'pos'), (5, 'pos')],
-            (-1, 0): [(3, 'neg'), (4, 'neg'), (6, 'pos')],
-            (3, 4): [(6, 'neg'), (7, 'pos'), (8, 'pos')]}
+             (-1, -3): [(2, 'neg'), (4, 'pos'), (5, 'pos')],
+             (-1, 0): [(3, 'neg'), (4, 'neg'), (6, 'pos')],
+             (3, 4): [(6, 'neg'), (7, 'pos'), (8, 'pos')]}
         """
         # finding edges that are adjacent to each vertex
         comp_vert = {}
@@ -789,7 +791,7 @@ class TropicalCurve(TropicalVariety):
                     else:
                         comp_vert[(x,y)].append((i,'neg'))
         return comp_vert
-    
+
     def weight_vectors(self):
         r"""
         Return the weight vectors for all vertices of ``self``.
@@ -820,14 +822,17 @@ class TropicalCurve(TropicalVariety):
             sage: p3 = R(2)*x^2 + x*y + R(2)*y^2 + x + R(-1)*y + R(3)
             sage: p3.tropical_variety().weight_vectors()
             {(-2, 0): [(-1, -1), (0, 1), (1, 0)],
-            (-1, -3): [(-1, -1), (0, 1), (1, 0)],
-            (-1, 0): [(-1, 0), (0, -1), (1, 1)],
-            (3, 4): [(-1, -1), (0, 1), (1, 0)]}
+             (-1, -3): [(-1, -1), (0, 1), (1, 0)],
+             (-1, 0): [(-1, 0), (0, -1), (1, 1)],
+             (3, 4): [(-1, -1), (0, 1), (1, 0)]}
         """
         from sage.calculus.functional import diff
         from sage.arith.misc import gcd
         from sage.rings.rational_field import QQ
         from sage.modules.free_module_element import vector
+
+        if not self._components_of_vertices():
+            return {}
 
         # finding the base vector in the direction of each edges
         temp_vectors = []
@@ -866,14 +871,17 @@ class TropicalCurve(TropicalVariety):
 
             sage: T = TropicalSemiring(QQ)
             sage: R.<x,y> = PolynomialRing(T)
-            sage: p3 = R(2)*x^2 + x*y + R(2)*y^2 + x + R(-1)*y + R(3)
-            sage: p3.tropical_variety().is_smooth()
+            sage: p1 = x^2 + x + R(1)
+            sage: p1.tropical_variety().is_smooth()
+            False
+            sage: p2 = R(2)*x^2 + x*y + R(2)*y^2 + x + R(-1)*y + R(3)
+            sage: p2.tropical_variety().is_smooth()
             True
         """
         if len(self.vertices()) == self._poly.degree()**2:
             return True
         return False
-    
+
     def is_simple(self):
         r"""
         Return ``True`` if ``self`` is simple and ``False`` otherwise.
@@ -887,8 +895,11 @@ class TropicalCurve(TropicalVariety):
 
             sage: T = TropicalSemiring(QQ)
             sage: R.<x,y> = PolynomialRing(T)
-            sage: p3 = R(2)*x^2 + x*y + R(2)*y^2 + x + R(-1)*y + R(3)
-            sage: p3.tropical_variety().is_simple()
+            sage: p1 = R(0) + x + y + x*y + x^2*y + x*y^2
+            sage: p1.tropical_variety().is_simple()
+            False
+            sage: p2 = R(2)*x^2 + x*y + R(2)*y^2 + x + R(-1)*y + R(3)
+            sage: p2.tropical_variety().is_simple()
             True
         """
         vov = self.weight_vectors()
@@ -900,7 +911,7 @@ class TropicalCurve(TropicalVariety):
                     if -v not in vov[vertex]:
                         return False
         return True
-    
+
     def genus(self):
         r"""
         Return the genus of ``self``.
@@ -914,12 +925,12 @@ class TropicalCurve(TropicalVariety):
 
             sage: T = TropicalSemiring(QQ)
             sage: R.<x,y> = PolynomialRing(T)
-            sage: p3 = R(2)*x^2 + x*y + R(2)*y^2 + x + R(-1)*y + R(3)
-            sage: p3.tropical_variety().genus()
+            sage: p1 = R(2)*x^2 + x*y + R(2)*y^2 + x + R(-1)*y + R(3)
+            sage: p1.tropical_variety().genus()
             0
         """
         if not self.is_simple():
-            raise ValueError
+            raise ValueError("tropical curve is not simple")
         trivalent = 0  # number of trivalent vertices
         for vectors in self.weight_vectors().values():
             if len(vectors) == 3:
@@ -929,7 +940,7 @@ class TropicalCurve(TropicalVariety):
             if len(component[1]) == 1:
                 unbounded += 1
         return trivalent//2 - unbounded//2 + 1
-    
+
     def contribution(self):
         r"""
         Return the contribution of ``self``.
@@ -950,8 +961,8 @@ class TropicalCurve(TropicalVariety):
             sage: p1 = R(-2)*x^2 + R(-1)*x + R(1/2)*y + R(1/6)
             sage: p1.tropical_variety().contribution()
             1
-            sage: p3 = R(2)*x^2 + x*y + R(2)*y^2 + x + R(-1)*y + R(3)
-            sage: p3.tropical_variety().contribution()
+            sage: p2 = R(2)*x^2 + x*y + R(2)*y^2 + x + R(-1)*y + R(3)
+            sage: p2.tropical_variety().contribution()
             4
         """
         result = 1
@@ -967,9 +978,8 @@ class TropicalCurve(TropicalVariety):
                     w1 = self._hypersurface[index1][2]
                     w2 = self._hypersurface[index2][2]
                     det = u1[0]*u2[1] - u1[1]*u2[0]
-                    print(vertex, w1, w2, u1, u2, det)
                     result *= w1*w2*abs(det)
-        return result        
+        return result
 
     def _parameter_intervals(self):
         r"""

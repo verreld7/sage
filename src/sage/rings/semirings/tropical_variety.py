@@ -454,6 +454,140 @@ class TropicalVariety(SageObject):
             G.layout(dim=3, save_pos=True)
             G._pos3d = pos
         return G
+    
+    def _components_intersection(self):
+        r"""
+        Return the intersection of three or more components of ``self``.
+
+        For a tropical variety in `\RR^n`, the intersection is characterized
+        by a linear equation in `\RR^{n-1}`. Specifically, this becomes a
+        vertex for tropical curve and an edges for tropical surface.
+
+        OUTPUT:
+
+        A dictionary where the keys represent component indices and the
+        values are lists of tuples. Each tuple contains a parametric
+        equation of points and the corresponding parameter's condition.
+
+        EXAMPLES:
+
+        In two dimension, it will provide vertices that are incident with
+        each component::
+
+            sage: T = TropicalSemiring(QQ)
+            sage: R.<x,y> = PolynomialRing(T)
+            sage: p1 = R(2)*x^2 + x*y + R(2)*y^2 + x + R(-1)*y + R(3)
+            sage: tv = p1.tropical_variety()
+            sage: tv._components_intersection()
+            {0: [((-2, 0), {})],
+            1: [((-2, 0), {})],
+            2: [((-1, -3), {})],
+            3: [((-2, 0), {}), ((-1, 0), {})],
+            4: [((-1, -3), {}), ((-1, 0), {})],
+            5: [((-1, -3), {})],
+            6: [((-1, 0), {}), ((3, 4), {})],
+            7: [((3, 4), {})],
+            8: [((3, 4), {})]}
+
+        In three dimensions, it will provide all parametric equations of
+        lines that lie within each component::
+
+            sage: T = TropicalSemiring(QQ)
+            sage: R.<x,y,z> = PolynomialRing(T)
+            sage: p1 = x + y + z + x^2
+            sage: tv = p1.tropical_variety()
+            sage: tv._components_intersection()
+            {0: [((t2, t2, t2), {0 <= t2}), ((0, 0, t2), {0 <= t2})],
+            1: [((0, t2, 0), {0 <= t2}), ((t2, t2, t2), {0 <= t2})],
+            2: [((0, t1, 0), {0 <= t1}), ((0, 0, t2), {0 <= t2})],
+            3: [((t1, t1, t1), {0 <= t1}), ((t1, 2*t1, 2*t1), {t1 <= 0})],
+            4: [((1/2*t2, t2, t2), {t2 <= 0}), ((0, 0, t2), {0 <= t2})],
+            5: [((0, t2, 0), {0 <= t2}), ((1/2*t2, t2, t2), {t2 <= 0})]}
+        """
+        import operator
+        from sage.functions.min_max import max_symbolic, min_symbolic
+        from sage.symbolic.relation import solve
+        from sage.symbolic.expression import Expression
+        from sage.sets.set import Set
+
+        def update_result(result):
+            sol_param = solve(new_expr, vars)
+            sol_param_sim = set()
+            for sol in sol_param:
+                if sol == []:
+                    for v in vars:
+                        if v != var:
+                            sol_param_sim.add(v < infinity)
+                elif isinstance(sol, list):
+                    for eqn in sol:
+                        if eqn.operator() == operator.eq:
+                            if not eqn.rhs().is_numeric():
+                                eqn_var = eqn.rhs().variables()
+                                param_var = [v for v in eqn_var if v in vars]
+                                if not param_var:
+                                    v = eqn.lhs()
+                                    if v != var:
+                                        sol_param_sim.add(v < infinity)
+                        elif eqn.operator() == operator.lt:
+                            sol_param_sim.add(eqn.lhs() <= eqn.rhs())
+                        elif eqn.operator() == operator.gt:
+                            sol_param_sim.add(eqn.lhs() >= eqn.rhs())
+                else:
+                    sol_param_sim.add(sol)
+            # Checking there are no conditions with the same variables
+            # that use the <= and >= operators simultaneously
+            unique_sol_param = set()
+            temp = [s for s in sol_param_sim]
+            op_temp = {i: set(temp[i].operands()) for i in range(len(temp))}
+            for s_value in op_temp.values():
+                match_keys = [k for k, v in op_temp.items() if v == s_value]
+                if len(match_keys) == 1:
+                    for i in match_keys:
+                        unique_sol_param.add(temp[i])
+
+            if (unique_sol_param) or (self.dimension() == 2):
+                if not unique_sol_param:
+                    unique_sol_param = Set()
+                if index not in result:
+                    result[index] = [(tuple(points), unique_sol_param)]
+                else:
+                    result[index].append((tuple(points), unique_sol_param))
+
+        result = {}
+        vars = self._vars
+        for index, comp in enumerate(self._hypersurface):
+            for expr in comp[1]:
+                left = expr.lhs()
+                right = expr.rhs()
+                # If the lhs contains a min or max operator
+                if (left.operator() == max_symbolic) or (left.operator() == min_symbolic):
+                    for operand in expr.lhs().operands():
+                        points = list(comp[0])
+                        new_expr = [e.subs(**{str(right): operand}) for e in comp[1]]
+                        for i, p in enumerate(points):
+                            new_eq = p.subs(**{str(right): operand})
+                            points[i] = new_eq
+                        update_result(result)
+                # If the rhs contains a min or max operator
+                elif (right.operator() == max_symbolic) or (right.operator() == min_symbolic):
+                    for operand in expr.rhs().operands():
+                        points = list(comp[0])
+                        new_expr = [e.subs(**{str(left): operand}) for e in comp[1]]
+                        for i, p in enumerate(points):
+                            new_eq = p.subs(**{str(left): operand})
+                            points[i] = new_eq
+                        update_result(result)
+                else:
+                    var = expr.variables()[0]
+                    points = list(comp[0])
+                    subs_expr = solve(left == right, var)[0].rhs()
+                    new_expr = [e.subs(**{str(var): subs_expr}) for e in comp[1]]
+                    for i, p in enumerate(points):
+                        new_eq = p.subs(**{str(var): subs_expr})
+                        points[i] = new_eq
+                    update_result(result)
+        return result
+
 
 class TropicalSurface(TropicalVariety):
     r"""
@@ -648,6 +782,143 @@ class TropicalSurface(TropicalVariety):
             Tropical surface of 0*x^4 + 0*z^2
         """
         return (f"Tropical surface of {self._poly}")
+    
+    def weight_vectors(self):
+        r"""
+        Return the weight vectors for each edge of ``self``.
+
+        Suppose `L` is an edge adjacent to the surface `S_1, ldots, S_k`
+        with respective weights `w_1, ldots, w_k`. This edge `L` has
+        a direction vector `d=[d_1,d_2,d_3]`. Each surface
+        `S_1, ldots, S_k` has a normal vector `n_1, \ldots, n_k`.
+        Make sure that the normal vector is scale to an integer vector
+        `n_k=(\alpha, \beta, \gamma)` such that
+        `\gcd(\alpha, \beta, \gamma)=1`. The weight vector of a surface
+        with respect to line `L` can be calculated with
+        `v_k=w_k \cdot (d\times n_k). These vectors will satisfy
+        the following balancing condition:
+        `\sum_{i=1}^k v_k = 0`.
+
+        OUTPUT:
+
+        A dictionary where the keys represent the vertices, and the values
+        are lists of vectors.
+
+        EXAMPLES::
+
+            sage: T = TropicalSemiring(QQ)
+            sage: R.<x,y,z> = PolynomialRing(T)
+            sage: p1 = x^2 + y^2 + z^3
+            sage: tv1 = p1.tropical_variety()
+            sage: tv1.weight_vectors()
+            [[((3/2*t2, 3/2*t2, t2), {t2 < +Infinity}),
+             [(-2, -2, 6), (-9/2, 13/2, -3), (13/2, -9/2, -3)]]]
+
+            sage: p2 = x + y + z + x^2 + R(1)
+            sage: tv2 = p2.tropical_variety()
+            sage: tv2.weight_vectors()
+            [[((t2, t2, t2), {0 <= t2, t2 <= 1}), [(-1, -1, 2), (-1, 2, -1), (2, -1, -1)]],
+            [((0, 0, t2), {0 <= t2}), [(-1, -1, 0), (0, -1, 0), (1, 2, 0)]],
+            [((1, 1, t2), {1 <= t2}), [(1, 1, 0), (0, -1, 0), (-1, 0, 0)]],
+            [((0, t2, 0), {0 <= t2}), [(1, 0, 1), (0, 0, 1), (-1, 0, -2)]],
+            [((1, t2, 1), {1 <= t2}), [(-1, 0, -1), (0, 0, 1), (1, 0, 0)]],
+            [((1/2*t2, t2, t2), {t2 <= 0}), [(2, -1/2, -1/2), (-1, -2, 5/2), (-1, 5/2, -2)]],
+            [((t1, 1, 1), {1 <= t1}), [(0, -1, -1), (0, 0, 1), (0, 1, 0)]]]
+        """
+        from sage.symbolic.ring import SR
+        from sage.symbolic.relation import solve
+        from sage.calculus.functional import diff
+        from sage.arith.misc import gcd
+        from sage.rings.rational_field import QQ
+        from sage.modules.free_module_element import vector
+
+        t = SR.var('t')
+        CI = self._components_intersection()
+        unique_line = set()
+        index_line = {}
+        line_comps = {}
+        index = 0
+
+        # Identify the distinct line of intersection and determine which
+        # components contain this line.
+        for i, lines in CI.items():
+            for line in lines:
+                v1 = next(iter(line[1])).variables()[0] # varriable in line
+                eqn = line[0]
+                is_unique = True
+                for uniq in unique_line:
+                    subs_index = -1
+                    for j in range(3):
+                        if eqn[j] != uniq[j]:
+                            subs_index = j
+                            break
+                    if subs_index == -1:
+                        new_line = eqn
+                        is_unique = False
+                        break
+                    eq1 = eqn[subs_index].subs(v1 == t)
+                    eq2 = uniq[subs_index]
+                    temp_sol = solve(eq1 == eq2, t)
+                    if temp_sol:
+                        temp_sol = temp_sol[0].rhs()
+                        if not temp_sol.is_numeric():
+                            new_line = []
+                            for l in eqn:
+                                new_line.append(l.subs(v1 == temp_sol))
+                            if tuple(new_line) in unique_line:
+                                is_unique = False
+                                break
+                if is_unique:
+                    unique_line.add(eqn)
+                    index_line[index] = line
+                    line_comps[index] = [i]
+                    index += 1
+                else:
+                    match_key = [k for k, v in index_line.items() if v[0] == tuple(new_line)][0]
+                    line_comps[match_key].append(i)
+
+        WV = {i: [] for i in range(len(line_comps))}
+        for k, v in line_comps.items():
+            # Calculate direction vector of the line
+            dir_vec = []
+            line = index_line[k][0]
+            for l in line:
+                if l.variables():
+                    vpar = l.variables()[0]
+                    break
+            for l in line:
+                dir_vec.append(QQ(diff(l, vpar)))
+            dir_vec = vector(dir_vec)
+
+            # Calculate the outgoing normal vector of each surface in the
+            # direction of the line
+            for i in v:
+                surface = self._hypersurface[i][0]
+                vec1, vec2 = [], []
+                for s in surface:
+                    vec1.append(QQ(diff(s, self._vars[0])))
+                    vec2.append(QQ(diff(s, self._vars[1])))
+                vector1 = vector(vec1)
+                vector2 = vector(vec2)
+                nor_vec = vector1.cross_product(vector2)
+                nor_vec *= 1/gcd(nor_vec)
+                weight_vec = nor_vec.cross_product(dir_vec)
+                weight_vec = vector([QQ(w) for w in weight_vec])
+                order = self._hypersurface[i][2]
+                weight_vec *= order
+                WV[k].append(weight_vec)
+            for i in range(len(WV[k])):
+                test_vectors = [v for v in WV[k]]
+                test_vectors[i] = -test_vectors[i]
+                if sum(test_vectors) == vector([0,0,0]):
+                    WV[k] = test_vectors
+                    break
+
+        result = []
+        for k, v in WV.items():
+            result.append([index_line[k], v])
+        return result
+
 
 class TropicalCurve(TropicalVariety):
     r"""
